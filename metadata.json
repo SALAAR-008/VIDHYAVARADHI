@@ -1,0 +1,8 @@
+{
+  "name": "Vidyavaradhi: Offline Tribal & Pan-Indian Pedagogy Speech Engine",
+  "description": "Offline-first bilingual pedagogy and real-time speech translation platform for Hindi to 22+ Scheduled Indian Languages and tribal tongues (Santhali, Gondi, Ho, Mundari, Bodo) for primary education.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
