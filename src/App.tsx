@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TextbookUploadView } from './components/TextbookUploadView';
 import {
   BookOpen,
@@ -11,7 +11,6 @@ import {
   Award,
   ChevronRight,
   Loader2,
-  Compass,
 } from 'lucide-react';
 import {
   translateBilingualSpeech,
@@ -100,7 +99,6 @@ export default function App() {
   const [sourceLanguage] = useState<string>('Hindi');
 
   const [translationResult, setTranslationResult] = useState<TextbookTranslationResult | null>(null);
-  const [, setSavedLessons] = useState<TextbookTranslationResult[]>([]);
 
   // Speech Translation states
   const [spokenPrompt, setSpokenPrompt] = useState<string>('बच्चों, अपनी किताबें खोलो और पृष्ठ संख्या पाँच पर ध्यान दो।');
@@ -284,7 +282,9 @@ export default function App() {
 
       {/* Main Workspace */}
       <main className="flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full">
-        {currentTab === 'textbook-upload' && <TextbookUploadView selectedLanguageId="{selectedLanguageId}"/>}
+        {currentTab === 'textbook-upload' && (
+          <TextbookUploadView selectedLanguageId={selectedLanguageId} />
+        )}
 
         {/* TAB 2: LIVE CLASSROOM VOICE ENGINE */}
         {currentTab === 'speech' && (

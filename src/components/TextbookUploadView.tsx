@@ -5,20 +5,20 @@
 
 import React, { useState, useRef, ChangeEvent, DragEvent } from 'react';
 import {
-  UploadCloud,
   FileText,
   Volume2,
   VolumeX,
   Languages,
-  Sparkles,
   Loader2,
   AlertCircle,
   CheckCircle2,
   BookOpen,
-  Compass,
   RotateCcw,
   Copy,
   Check,
+  Sparkles,
+  UploadCloud,
+  Compass,
 } from 'lucide-react';
 import {
   translateTextbookFile,
