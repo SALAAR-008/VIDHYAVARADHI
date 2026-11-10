@@ -27,6 +27,13 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Set COOP and COEP headers for WASM / ONNX multi-threading with SharedArrayBuffer
+app.use((_req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+
 /**
  * Creates and returns a configured GoogleGenAI instance with telemetry header.
  */
@@ -43,10 +50,10 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 /**
- * Helper to check if an API key looks like a valid Gemini API key (starts with AIza)
+ * Helper to check if an API key is available and configured
  */
-function isValidGeminiKey(key: string): boolean {
-  return typeof key === 'string' && key.startsWith('AIza') && key.length > 20;
+function isValidGeminiKey(key?: string): boolean {
+  return typeof key === 'string' && key.trim().length > 5;
 }
 
 /**
@@ -71,22 +78,37 @@ app.post('/api/translate-textbook', async (req: Request, res: Response) => {
         const ai = getGeminiClient();
 
         const prompt = `
-You are an expert bilingual pedagogue for Indian primary education, specializing in bridging standard curricula (in Hindi/English) with 22+ Scheduled Indian Languages and indigenous/tribal mother tongues (e.g., Santhali with Ol Chiki script, Gondi, Ho with Warang Citi, Mundari, Bodo).
+You are an expert bilingual pedagogue for Indian primary education, specializing in bridging standard curricula (in Hindi/English) with 22+ Scheduled Indian Languages and indigenous/tribal mother tongues (e.g., Telugu, Bengali, Tamil, Odia, Marathi, Santhali with Ol Chiki script, Gondi, Ho with Warang Citi, Mundari, Bodo).
 
-Analyze this textbook page or educational material:
-1. Extract the main educational text in the source language (${sourceLanguage}).
-2. Provide a faithful, culturally sensitive translation into ${targetLanguage}. If the target language has an indigenous script (like Ol Chiki for Santhali) provide both that script and Roman/Devanagari phonetics.
-3. Provide a clear Romanized transliteration ("romanizedText") for the translated text so non-native teachers can read and pronounce it with accurate phonetics.
-4. Formulate a simplified summary suitable for ${gradeLevel} students.
-5. Extract 4-6 key curriculum vocabulary terms with pronunciation transliteration, translation, and localized context.
-6. Provide 2-3 practical classroom activities or teaching aids for teachers using easily accessible rural/classroom items.
-7. Provide a cultural analogy or familiar rural/forest/community reference that helps students grasp abstract concepts (like math, science, nature).
+Analyze this textbook page or educational document comprehensively:
+1. Complete Line-by-Line OCR Extraction: Perform a meticulous, exhaustive OCR extraction of ALL visible text from the textbook image or document without skipping, summarizing, or truncating any paragraphs, questions, headings, or sidebars ("extractedSourceText"). If the image contains a title like "पाठ ४: नदियाँ और हमारे जंगल", transcribe the full text verbatim.
+2. Full Faithful Translation in Native Script: Translate the entire extracted content faithfully into ${targetLanguage} ("translatedText"), preserving paragraph structure, questions, and formatting.
+   CRITICAL SCRIPT & LANGUAGE RULES:
+   - Use the authentic native script of ${targetLanguage}.
+   - If ${targetLanguage} is Telugu, output strictly in Telugu script (e.g., "నీరు మన జీవితానికి ఆధారం...").
+   - If ${targetLanguage} is Bengali, output strictly in Bengali script.
+   - If ${targetLanguage} is Tamil, output strictly in Tamil script.
+   - If ${targetLanguage} is Odia, output strictly in Odia script.
+   - If ${targetLanguage} is Marathi, Hindi, or Gondi, output in Devanagari script.
+   - Strictly ONLY use Ol Chiki script if ${targetLanguage} === 'Santhali'.
+   - Strictly ONLY use Warang Citi script if ${targetLanguage} === 'Ho'.
+   - NEVER use Ol Chiki script or Santhali vocabulary if ${targetLanguage} is NOT Santhali!
+3. Complete Romanized Transliteration: Generate an accurate, complete Romanized phonetic transliteration ("romanizedText") matching ${targetLanguage} phonetics (NOT Santhali), so non-native teachers can read and pronounce ${targetLanguage} accurately (e.g. for Telugu: "Neeru mana jeevithaniki aadhaaram...").
+4. Simplified Pedagogical Summary: Formulate a clear, structured summary suitable for ${gradeLevel} students and teachers.
+5. Exhaustive Vocabulary List (10 to 15 terms): Extract an exhaustive list of 10 to 15 key conceptual vocabulary terms, technical concepts, and classroom keywords found across the document. For each term, provide:
+   - "term": original term in ${sourceLanguage}
+   - "transliteration": native script representation in ${targetLanguage} (or phonetic guide)
+   - "translation": definition / translation in ${targetLanguage} or English
+   - "meaning": pedagogical explanation in simple language
+   - "exampleSentence": contextual example sentence in ${targetLanguage}
+6. Practical Classroom Activities & Teaching Aids: Provide 3-4 hands-on teaching aids using easily accessible rural/classroom items.
+7. Cultural Analogy: Provide a cultural analogy or familiar rural/forest/community reference that helps students grasp abstract concepts.
 
 Respond strictly in valid JSON format matching this schema:
 {
-  "extractedSourceText": "string",
-  "translatedText": "string",
-  "romanizedText": "string",
+  "extractedSourceText": "string (entire document transcribed line-by-line)",
+  "translatedText": "string (entire document translated comprehensively in ${targetLanguage} script)",
+  "romanizedText": "string (full Romanized transliteration for ${targetLanguage} pronunciation)",
   "targetLanguage": "${targetLanguage}",
   "sourceLanguage": "${sourceLanguage}",
   "pedagogicalSummary": "string",
@@ -99,7 +121,7 @@ Respond strictly in valid JSON format matching this schema:
       "exampleSentence": "string"
     }
   ],
-  "teachingAids": ["string", "string"],
+  "teachingAids": ["string", "string", "string"],
   "culturalAnalogies": "string"
 }
 `;
@@ -160,13 +182,23 @@ app.post('/api/translate-speech', async (req: Request, res: Response) => {
         const ai = getGeminiClient();
 
         const prompt = `
-Translate this spoken classroom instruction from ${sourceLanguage} to ${targetLanguage}:
+Translate this spoken classroom instruction directly from ${sourceLanguage} to ${targetLanguage}:
 "${spokenText}"
 
 Target audience: Primary school children in tribal / rural India.
-Provide:
-1. "translation": accurate translation in ${targetLanguage}.
-2. "phoneticScript": phonetic reading in Roman English and Devanagari so the non-native teacher can pronounce it accurately.
+CRITICAL SCRIPT & TRANSLATION RULES:
+1. "translation": Output the accurate, direct translation STRICTLY in ${targetLanguage}'s authentic native script.
+   - When translating "हाथ उठाइए" (or "हाथ उठाओ") to Telugu, output "చేతులు పైకి ఎత్తండి" (or "చేతులు ఎత్తండి") with phoneticScript "Chethulu paiki etthandi".
+   - NEVER prepend greetings like "నమస్కారం పిల్లలు" (Namaskaram pillalu), "Hello", "Namaste", or any salutation unless explicitly present in the original input.
+   - If ${targetLanguage} is Telugu, output strictly in Telugu script (e.g. అందరికీ ఈ పాఠం అర్థమైందా?).
+   - If ${targetLanguage} is Bengali, output strictly in Bengali script.
+   - If ${targetLanguage} is Tamil, output strictly in Tamil script.
+   - If ${targetLanguage} is Odia, output strictly in Odia script.
+   - If ${targetLanguage} is Marathi, Hindi, or Gondi, output in Devanagari script.
+   - ONLY use Ol Chiki script if ${targetLanguage} is Santhali.
+   - ONLY use Warang Citi script if ${targetLanguage} is Ho.
+   - NEVER use Ol Chiki or Santhali text if ${targetLanguage} is not Santhali!
+2. "phoneticScript": Provide the accurate Romanized phonetic reading corresponding directly to the ${targetLanguage} translation so non-native teachers can read and pronounce it accurately (e.g. for Telugu: Chethulu paiki etthandi).
 3. "teacherNote": a 1-sentence note for encouraging student engagement.
 
 Respond in JSON format:
@@ -260,6 +292,61 @@ app.post('/api/stream-translate-speech', async (req: Request, res: Response) => 
 });
 
 /**
+ * POST /api/live-translate-speech
+ * Real-time Live API translation endpoint for audio or text chunks.
+ */
+app.post('/api/live-translate-speech', async (req: Request, res: Response) => {
+  try {
+    const { audioChunk, spokenText = '', targetLanguage = 'Telugu', sourceLanguage = 'Hindi' } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+
+    if (isValidGeminiKey(apiKey)) {
+      try {
+        const ai = getGeminiClient();
+        const contents = audioChunk
+          ? [
+              { inlineData: { data: audioChunk, mimeType: 'audio/pcm;rate=16000' } },
+              {
+                text: `Translate any spoken classroom instruction from ${sourceLanguage} directly into ${targetLanguage}.
+Respond in JSON format: {"translation": "in native script", "phoneticScript": "Romanized phonetic", "teacherNote": "tip"}`,
+              },
+            ]
+          : [
+              `Translate directly from ${sourceLanguage} to ${targetLanguage}: "${spokenText}".
+Respond in JSON format: {"translation": "in native script", "phoneticScript": "Romanized phonetic", "teacherNote": "tip"}`,
+            ];
+
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+
+        const parsed = JSON.parse(response.text || '{}');
+        if (parsed.translation) {
+          return res.json({
+            translation: parsed.translation,
+            phoneticScript: parsed.phoneticScript || '',
+            teacherNote: parsed.teacherNote || '',
+          });
+        }
+      } catch (liveErr) {
+        console.warn('Gemini live translate error, utilizing offline engine:', liveErr);
+      }
+    }
+
+    const fallback = getOfflineSpeechTranslation(spokenText, targetLanguage, sourceLanguage);
+    return res.json(fallback);
+  } catch (err: unknown) {
+    console.warn('Error in /api/live-translate-speech:', err);
+    const fallback = getOfflineSpeechTranslation(req.body?.spokenText || '', req.body?.targetLanguage || 'Telugu');
+    return res.json(fallback);
+  }
+});
+
+/**
  * POST /api/synthesize-audio
  * Generates spoken audio for textbook phrases or translations using client-side Web Speech fallback.
  */
@@ -280,8 +367,8 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        host: '0.0.0.0',
-        port: PORT,
+        hmr: false,
+        watch: null,
       },
       appType: 'spa',
     });

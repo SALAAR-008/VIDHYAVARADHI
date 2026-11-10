@@ -61,8 +61,9 @@ export async function fileToGenerativePart(file: File | Blob): Promise<Generativ
 }
 
 /**
- * Translates and breaks down a textbook page or educational document via the server.
- * Never throws unhandled errors to the UI.
+ * Translates and breaks down a textbook page or educational document.
+ * Communicates with the server-side /api/translate-textbook endpoint.
+ * Gracefully falls back to the dynamic offline pedagogy engine on error or offline usage.
  */
 export async function translateTextbookFile(
   file: File | Blob,
@@ -70,9 +71,9 @@ export async function translateTextbookFile(
   sourceLanguage = 'Hindi',
   gradeLevel = 'Primary (Classes 1-5)'
 ): Promise<TextbookTranslationResult> {
-  try {
-    const filePart = await fileToGenerativePart(file);
+  const filePart = await fileToGenerativePart(file);
 
+  try {
     const res = await fetch('/api/translate-textbook', {
       method: 'POST',
       headers: {
@@ -92,18 +93,23 @@ export async function translateTextbookFile(
       if (data && data.translatedText) {
         return data;
       }
+    } else {
+      const errJson = await res.json().catch(() => null);
+      if (errJson?.error) {
+        console.warn('Server textbook translation returned error:', errJson.error);
+      }
     }
   } catch (err) {
-    console.warn('Textbook translation fetch error, using offline pedagogy engine:', err);
+    console.warn('Textbook translation fetch error, using dynamic language pedagogy engine:', err);
   }
 
-  // Resilient offline pedagogical module
+  // High quality offline fallback
   return getOfflineTextbookPedagogy(targetLanguage, sourceLanguage, gradeLevel);
 }
 
 /**
- * Translates spoken classroom instruction between Hindi and target language via the server.
- * Never throws unhandled errors to the UI.
+ * Translates spoken classroom instruction between Hindi and target language.
+ * Sends the request to the server-side /api/translate-speech endpoint.
  */
 export async function translateBilingualSpeech(
   spokenText: string,
@@ -114,6 +120,15 @@ export async function translateBilingualSpeech(
   phoneticScript: string;
   teacherNote: string;
 }> {
+  const cleanText = spokenText.trim();
+  if (!cleanText) {
+    return {
+      translation: '',
+      phoneticScript: '',
+      teacherNote: '',
+    };
+  }
+
   try {
     const res = await fetch('/api/translate-speech', {
       method: 'POST',
@@ -121,7 +136,7 @@ export async function translateBilingualSpeech(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        spokenText,
+        spokenText: cleanText,
         targetLanguage,
         sourceLanguage,
       }),
@@ -132,17 +147,27 @@ export async function translateBilingualSpeech(
       if (data && data.translation) {
         return data;
       }
+    } else {
+      const errJson = await res.json().catch(() => null);
+      if (errJson?.error) {
+        console.warn('Server speech translation returned error:', errJson.error);
+      }
     }
   } catch (err) {
-    console.warn('Speech translation fetch error, using offline pedagogy engine:', err);
+    console.warn('Speech translation fetch error, using dynamic language pedagogy engine:', err);
   }
 
-  // Resilient offline pedagogical module
-  return getOfflineSpeechTranslation(spokenText, targetLanguage, sourceLanguage);
+  // Dynamic language-specific pedagogy engine fallback
+  return getOfflineSpeechTranslation(cleanText, targetLanguage, sourceLanguage);
 }
 
 /**
- * Streams spoken translation in real time via server-sent events.
+ * Alias for translateBilingualSpeech for direct speech translation.
+ */
+export const translateSpeech = translateBilingualSpeech;
+
+/**
+ * Streams spoken translation in real time via server-sent events from /api/stream-translate-speech.
  */
 export async function streamBilingualSpeech(
   spokenText: string,
@@ -185,7 +210,7 @@ export async function streamBilingualSpeech(
                 onChunk?.(parsed.text);
               }
             } catch {
-              // ignore heartbeat
+              // ignore SSE control chunks
             }
           }
         }
@@ -200,6 +225,43 @@ export async function streamBilingualSpeech(
   const fallback = getOfflineSpeechTranslation(spokenText, targetLanguage, sourceLanguage);
   onChunk?.(fallback.translation);
   return fallback.translation;
+}
+
+/**
+ * Real-time Live API translation helper communicating with /api/live-translate-speech on the server.
+ */
+export async function liveTranslateSpeech(
+  params: {
+    audioChunk?: string;
+    spokenText?: string;
+    targetLanguage: string;
+    sourceLanguage?: string;
+  }
+): Promise<{
+  translation: string;
+  phoneticScript: string;
+  teacherNote: string;
+}> {
+  try {
+    const res = await fetch('/api/live-translate-speech', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.translation) {
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('Live speech translation error:', err);
+  }
+
+  return getOfflineSpeechTranslation(params.spokenText || '', params.targetLanguage, params.sourceLanguage || 'Hindi');
 }
 
 /**

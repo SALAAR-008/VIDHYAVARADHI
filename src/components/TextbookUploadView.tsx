@@ -32,10 +32,12 @@ import {
 
 export interface TextbookUploadViewProps {
   selectedLanguageId: string;
+  onTranslationComplete?: (result: TextbookTranslationResult) => void;
 }
 
 export const TextbookUploadView: React.FC<TextbookUploadViewProps> = ({
   selectedLanguageId: propLanguageId,
+  onTranslationComplete,
 }) => {
   const selectedLanguageId =
     !propLanguageId || propLanguageId === '{selectedLanguageId}'
@@ -122,6 +124,9 @@ export const TextbookUploadView: React.FC<TextbookUploadViewProps> = ({
       );
 
       setTranslationResult(result);
+      if (onTranslationComplete) {
+        onTranslationComplete(result);
+      }
     } catch (err) {
       console.error('Error during textbook translation:', err);
       setErrorMessage(
@@ -362,19 +367,19 @@ export const TextbookUploadView: React.FC<TextbookUploadViewProps> = ({
             </div>
 
             {/* Play Indian Language Audio Button */}
-            <button
-              type="button"
-              onClick={() =>
-                handleToggleAudio(
-                  translationResult.translatedText || translationResult.romanizedText
-                )
-              }
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md cursor-pointer ${
-                isPlayingAudio
-                  ? 'bg-rose-500 text-white shadow-rose-500/30 animate-pulse'
-                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
-              }`}
-            >
+           <button
+  type="button"
+  onClick={() =>
+    handleToggleAudio(
+      translationResult.romanizedText || translationResult.translatedText
+    )
+  }
+  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md cursor-pointer ${
+    isPlayingAudio
+      ? 'bg-rose-500 text-white shadow-rose-500/30 animate-pulse'
+      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+  }`}
+>
               {isPlayingAudio ? (
                 <>
                   <VolumeX className="w-4 h-4" />
@@ -519,16 +524,16 @@ export const TextbookUploadView: React.FC<TextbookUploadViewProps> = ({
                       <div className="flex items-start justify-between">
                         <span className="text-xs font-bold text-white">{vocab.term}</span>
                         <button
-                          type="button"
-                          onClick={() =>
-                            playIndianLanguageAudio(
-                              vocab.transliteration || vocab.translation,
-                              selectedLanguageId
-                            )
-                          }
-                          className="p-1 rounded text-slate-400 hover:text-amber-400 transition-colors"
-                          title="Speak word"
-                        >
+  type="button"
+  onClick={() =>
+    playIndianLanguageAudio(
+      vocab.transliteration || vocab.term,
+      selectedLanguageId
+    )
+  }
+  className="p-1 rounded text-slate-400 hover:text-amber-400 transition-colors"
+  title="Speak word"
+>
                           <Volume2 className="w-3.5 h-3.5" />
                         </button>
                       </div>

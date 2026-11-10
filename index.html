@@ -3,6 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // In the AI Studio iframe preview environment, HMR WebSockets cannot connect.
+      // Intercept vite-hmr websocket connections and suppress unhandled rejection logs.
+      (function() {
+        const NativeWebSocket = window.WebSocket;
+        if (NativeWebSocket) {
+          window.WebSocket = function(url, protocols) {
+            if (typeof url === 'string' && (url.includes('vite-hmr') || protocols === 'vite-hmr' || (Array.isArray(protocols) && protocols.includes('vite-hmr')))) {
+              const fakeWs = {
+                readyState: 3, // CLOSED
+                addEventListener: function() {},
+                removeEventListener: function() {},
+                send: function() {},
+                close: function() {},
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+              };
+              return fakeWs;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+          window.WebSocket.OPEN = NativeWebSocket.OPEN;
+          window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
+          window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
+        }
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && event.reason && (
+            (typeof event.reason.message === 'string' && event.reason.message.includes('WebSocket')) ||
+            (typeof event.reason === 'string' && event.reason.includes('WebSocket'))
+          )) {
+            event.preventDefault();
+          }
+        });
+      })();
+    </script>
     <title>Vidyavaradhi: Offline Tribal & Pan-Indian Pedagogy Speech Engine</title>
     <meta name="description" content="Offline-first bilingual pedagogy and real-time speech translation platform for Hindi to 22+ Scheduled Indian Languages and tribal tongues (Santhali, Gondi, Ho, Mundari, Bodo) for primary education." />
     <meta property="og:title" content="Vidyavaradhi: Offline Tribal & Pan-Indian Pedagogy Speech Engine" />

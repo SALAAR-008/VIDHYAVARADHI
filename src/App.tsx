@@ -13,10 +13,12 @@ import {
   Loader2,
 } from 'lucide-react';
 import {
+  translateSpeech,
   translateBilingualSpeech,
   TextbookTranslationResult,
 } from './utils/geminiService';
-import { playIndianLanguageAudio } from './utils/audioSynthesizer';
+import { getOfflineTextbookPedagogy } from './utils/offlinePedagogyEngine';
+import { playIndianLanguageAudio, preloadPiperTTS } from './utils/audioSynthesizer';
 
 interface LanguageOption {
   code: string;
@@ -109,7 +111,12 @@ export default function App() {
     phoneticScript: string;
     teacherNote: string;
   } | null>(null);
+  const [speechError, setSpeechError] = useState<string | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+
+useEffect(() => {
+    preloadPiperTTS();
+  }, []);
 
   // Initialize demo data from sample on load
   useEffect(() => {
@@ -117,37 +124,25 @@ export default function App() {
       (window as unknown as { __SELECTED_LANGUAGE_ID?: string }).__SELECTED_LANGUAGE_ID = selectedLanguageId;
     }
 
-    // Pre-populate with initial educational payload
-    setTranslationResult({
-      extractedSourceText: SAMPLE_LESSONS[0].hindiText,
-      translatedText: 'ᱫᱟᱜ ᱫᱚ ᱟᱵᱚᱣᱟᱜ ᱡᱤᱣᱤ ᱨᱮᱭᱟᱜ ᱵᱩᱱᱤᱭᱟᱹᱫᱽ ᱠᱟᱱᱟ (Daag do abowag jiwi reyag buniyaad kana)᱾ ᱫᱟᱜ ᱫᱚ ᱵᱟᱝ ᱠᱷᱟᱨᱟᱵᱽ ᱞᱟᱹᱠᱛᱤᱭᱟ᱾ ᱠᱩᱸᱧ, ᱜᱟᱰᱟ ᱟᱨ ᱵᱟᱣᱲᱤ ᱫᱚ ᱟᱵᱚᱣᱟᱜ ᱥᱤᱨᱡᱚᱱ ᱫᱟᱜ ᱡᱷᱟᱨᱱᱟ ᱠᱟᱱᱟ᱾',
-      romanizedText: 'Daag do abowag jiwi reyag buniyaad kana. Daag do baang kharab laktiya. Kunj, gada aar bawdi do abowag sirjon daag jharna kana.',
-      targetLanguage: 'Santhali',
-      sourceLanguage: 'Hindi',
-      pedagogicalSummary: 'Students learn water conservation using indigenous Santal traditional water harvest methods (bandh and jhora).',
-      vocabulary: [
-        { term: 'जल (Jal)', transliteration: 'ᱫᱟᱜ (Daag)', translation: 'Water', meaning: 'The elixir essential for humans, crops, and sacred groves (Jaher Than).' },
-        { term: 'जीवन (Jeevan)', transliteration: 'ᱡᱤᱣᱤ (Jiwi)', translation: 'Life / Spirit', meaning: 'Breathing vitality in all living beings.' },
-        { term: 'नदियाँ (Nadiyan)', transliteration: 'ᱜᱟᱰᱟ (Gada)', translation: 'Rivers', meaning: 'Living seasonal and perennial streams flowing from the hills.' },
-        { term: 'प्राकृतिक स्रोत (Prakritik Srot)', transliteration: 'ᱥᱤᱨᱡᱚᱱ ᱡᱷᱟᱨᱱᱟ (Sirjon Jharna)', translation: 'Natural Spring', meaning: 'Untouched forest springs providing clean drinking water.' },
-      ],
-      teachingAids: [
-        'Use clay cups or local leaf plates (patravali) to explain measuring water volume.',
-        'Draw a traditional village pond diagram with sand and stones in the courtyard.',
-        'Encourage students to sing a folk rain chant (Daha Sereng) together.'
-      ],
-      culturalAnalogies: 'In tribal communities, community ponds (Pukhri) and forest springs (Dharis) are sacred public goods guarded by village elders (Manjhi Haram). Explain how preserving water today ensures green forests for tomorrow.'
-    });
+    // Pre-populate with educational payload matched dynamically to selectedLanguageId
+    setTranslationResult(getOfflineTextbookPedagogy(selectedLanguageId));
+    setSpeechResult(null);
+    setSpeechError(null);
   }, [selectedLanguageId]);
 
   const handleSpeechTranslate = async () => {
-    if (!spokenPrompt.trim()) return;
+    const textToTranslate = spokenPrompt.trim();
+    if (!textToTranslate) return;
     setIsSpeechTranslating(true);
+    setSpeechError(null);
     try {
-      const res = await translateBilingualSpeech(spokenPrompt, selectedLanguage, sourceLanguage);
+      const res = await translateSpeech(textToTranslate, selectedLanguageId, sourceLanguage);
       setSpeechResult(res);
     } catch (err) {
       console.error('Speech translation failed:', err);
+      const msg = err instanceof Error ? err.message : 'Speech translation failed. Please check network or API key.';
+      setSpeechError(msg);
+      setSpeechResult(null);
     } finally {
       setIsSpeechTranslating(false);
     }
@@ -283,7 +278,10 @@ export default function App() {
       {/* Main Workspace */}
       <main className="flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full">
         {currentTab === 'textbook-upload' && (
-          <TextbookUploadView selectedLanguageId={selectedLanguageId} />
+          <TextbookUploadView
+            selectedLanguageId={selectedLanguageId}
+            onTranslationComplete={(result) => setTranslationResult(result)}
+          />
         )}
 
         {/* TAB 2: LIVE CLASSROOM VOICE ENGINE */}
@@ -317,7 +315,7 @@ export default function App() {
                     rows={3}
                     value={spokenPrompt}
                     onChange={(e) => setSpokenPrompt(e.target.value)}
-                    placeholder="जैसे: बच्चों, आज हम नदियों और वनों के बारे में पढ़ेंगे..."
+                    placeholder={`Type or speak any instruction in Hindi to translate into ${selectedLanguageId}... (e.g. आज हम पर्यावरण संरक्षण और पौधों के बारे में सीखेंगे)`}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                   />
                   <button
@@ -358,6 +356,7 @@ export default function App() {
                 </span>
                 <div className="flex flex-wrap gap-2">
                   {[
+                    'हाथ उठाइए',
                     'सभी बच्चे चुप हो जाएँ और यहाँ देखें।',
                     'क्या सबको यह पाठ समझ में आया?',
                     'अपनी-अपनी कॉपियों में तीन तक गिनती लिखो।',
@@ -377,21 +376,32 @@ export default function App() {
               {/* Translate Action */}
               <button
                 onClick={handleSpeechTranslate}
-                disabled={isSpeechTranslating}
+                disabled={isSpeechTranslating || !spokenPrompt.trim()}
                 className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-60 transition-all cursor-pointer"
               >
                 {isSpeechTranslating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Generating Phonetic Speech in {selectedLanguage}...
+                    Generating Phonetic Speech in {selectedLanguageId}...
                   </>
                 ) : (
                   <>
                     <Languages className="w-4 h-4" />
-                    Translate Spoken Instruction
+                    Translate into {selectedLanguageId}
                   </>
                 )}
               </button>
+
+              {/* Error Alert Box */}
+              {speechError && (
+                <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+                  <div>
+                    <span className="text-xs font-bold text-rose-300 block">Translation Error</span>
+                    <p className="text-xs text-rose-200/90 mt-0.5">{speechError}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Translation Output Card */}
               {speechResult && (
@@ -401,10 +411,10 @@ export default function App() {
                       Teacher Guide & Pronunciation Helper
                     </span>
                     <button
-                      onClick={() => handlePlayAudio(speechResult.translation)}
-                      disabled={isPlayingAudio}
-                      className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20"
-                    >
+  onClick={() => handlePlayAudio(speechResult.phoneticScript || speechResult.translation)}
+  disabled={isPlayingAudio}
+  className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+>
                       <Volume2 className="w-3.5 h-3.5" />
                       <span>{isPlayingAudio ? 'Speaking...' : 'Play Audio'}</span>
                     </button>
@@ -519,6 +529,57 @@ export default function App() {
                   Bridging the gap between tribal children's home language and school textbook language
                 </p>
               </div>
+
+              {/* Dynamic Lesson Pedagogy Breakdown from uploaded textbook */}
+              {translationResult && (
+                <div className="p-4 rounded-xl bg-slate-950 border border-amber-500/30 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-amber-400 font-bold tracking-wider">
+                      Current Lesson Pedagogy: {translationResult.targetLanguage}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {translationResult.vocabulary?.length || 0} Key Concepts Extracted
+                    </span>
+                  </div>
+
+                  {translationResult.pedagogicalSummary && (
+                    <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                      <span className="text-[11px] font-bold text-amber-300 block mb-1">
+                        Pedagogical Summary & Objective:
+                      </span>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {translationResult.pedagogicalSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {translationResult.culturalAnalogies && (
+                    <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                      <span className="text-[11px] font-bold text-emerald-300 block mb-1">
+                        Local Community & Forest Cultural Anchor:
+                      </span>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {translationResult.culturalAnalogies}
+                      </p>
+                    </div>
+                  )}
+
+                  {translationResult.teachingAids && translationResult.teachingAids.length > 0 && (
+                    <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                      <span className="text-[11px] font-bold text-sky-300 block mb-1">
+                        Recommended Low-Cost Classroom Activities & Teaching Aids:
+                      </span>
+                      <ul className="space-y-1 text-xs text-slate-300 list-disc list-inside">
+                        {translationResult.teachingAids.map((aid, idx) => (
+                          <li key={idx} className="leading-relaxed">
+                            {aid}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
